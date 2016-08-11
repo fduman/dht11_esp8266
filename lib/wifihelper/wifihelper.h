@@ -1,0 +1,1 @@
+bool checkWifiConnection(int maxRetry);
