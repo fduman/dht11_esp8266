@@ -29,6 +29,8 @@ python:
    - "2.7"
 
 sudo: false
+env:
+  - PLATFORMIO_BUILD_FLAGS="-lstdc++" 
 cache:
    directories:
        - "~/.platformio"
