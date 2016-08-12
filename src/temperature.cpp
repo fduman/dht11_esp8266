@@ -1,6 +1,7 @@
 #include <ESP8266WiFi.h>
 #include <wifihelper.h>
 #include <dht11sensor.h>
+#include <ESP8266HTTPClient.h>
 
 extern "C" {
   #include "user_interface.h"
@@ -21,39 +22,49 @@ String apiKey = "";
 const char* ssid = "";
 const char* password = "";
 const char* server = "api.thingspeak.com";
-WiFiClient client;
+
 DHT11 dht11(_pin);
+
+void configureWifi()
+{
+  // Faster connection with static IP
+  IPAddress ip(192, 168, 203, 250);
+  IPAddress gateway(192, 168, 203, 254);
+  IPAddress subnet(255, 255, 255, 0);
+
+  WiFi.config(ip, gateway, subnet);
+  WiFi.begin(ssid, password);
+  checkWifiConnection(maxWifiRetryCount);
+}
 
 void sendToThingSpeak(DHT11Result dhtResult)
 {
-  if (client.connect(server, 80)) { // "184.106.153.149" or api.thingspeak.com
-    String postStr = apiKey;
-    postStr +="&field1=";
-    postStr += String(dhtResult.temperatureC);
-    postStr +="&field2=";
-    postStr += String(dhtResult.humidity);
-    postStr +="&field3=";
-    postStr += String(ESP.getVcc());
-    postStr +="&field4=";
-    postStr += String(rtcData.sensorError);
-    postStr +="&status=";
-    postStr += "Running for " + String(rtcData.sleepCount) + " cycles";
-    postStr += "\r\n\r\n";
+  HTTPClient httpClient;
+  httpClient.begin("http://api.thingspeak.com/update");
+  httpClient.addHeader("Content-Type", "application/x-www-form-urlencoded");
+  httpClient.addHeader("X-THINGSPEAKAPIKEY", apiKey);
 
-    client.print("POST /update HTTP/1.1\n");
-    client.print("Host: api.thingspeak.com\n");
-    client.print("Connection: close\n");
-    client.print("X-THINGSPEAKAPIKEY: "+apiKey+"\n");
-    client.print("Content-Type: application/x-www-form-urlencoded\n");
-    client.print("Content-Length: ");
-    client.print(postStr.length());
-    client.print("\n\n");
-    client.print(postStr);
-    client.stop();
-    Serial.println("Data sent to Thingspeak");
+  String postStr = apiKey;
+  postStr +="&field1=";
+  postStr += String(dhtResult.temperatureC);
+  postStr +="&field2=";
+  postStr += String(dhtResult.humidity);
+  postStr +="&field3=";
+  postStr += String(ESP.getVcc());
+  postStr +="&field4=";
+  postStr += String(rtcData.sensorError);
+  postStr +="&status=";
+  postStr += "Running for " + String(rtcData.sleepCount) + " cycles";
+
+  int httpResult = httpClient.POST(postStr);
+  String resultString = httpClient.getString();
+  httpClient.end();
+  if (httpResult == HTTP_CODE_OK)
+  {
+    Serial.println("Data sent to Thingspeak: " + resultString);
   }
   else {
-    Serial.println("Cannot connect to Thingspeak server");
+    Serial.printf("Cannot connect to Thingspeak server: %s - %s\n", HTTPClient::errorToString(httpResult).c_str(), resultString.c_str());
   }
 }
 
@@ -81,13 +92,13 @@ void readRtcMemory()
 
 void setup() {
   Serial.begin(115200);
+  Serial.setDebugOutput(1);
   Serial.println();
   Serial.println();
   Serial.println();
   dht11.initialize();
   readRtcMemory();
-  WiFi.begin(ssid, password);
-  checkWifiConnection(maxWifiRetryCount);
+  configureWifi();
   Serial.println("Initialized..");
 }
 
